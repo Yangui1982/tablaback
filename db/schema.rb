@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_25_133457) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_25_135748) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -50,6 +50,40 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_25_133457) do
     t.index ["jti"], name: "index_jwt_denylists_on_jti"
   end
 
+  create_table "projects", force: :cascade do |t|
+    t.string "title"
+    t.bigint "user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_projects_on_user_id"
+  end
+
+  create_table "scores", force: :cascade do |t|
+    t.bigint "project_id", null: false
+    t.string "title"
+    t.string "status"
+    t.string "imported_format"
+    t.string "key_sig"
+    t.string "time_sig"
+    t.integer "tempo"
+    t.jsonb "doc"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["project_id"], name: "index_scores_on_project_id"
+  end
+
+  create_table "tracks", force: :cascade do |t|
+    t.bigint "score_id", null: false
+    t.string "name"
+    t.string "instrument"
+    t.string "tuning"
+    t.integer "capo"
+    t.integer "channel"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["score_id"], name: "index_tracks_on_score_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "email", default: "", null: false
     t.string "encrypted_password", default: "", null: false
@@ -64,4 +98,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_25_133457) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "projects", "users"
+  add_foreign_key "scores", "projects"
+  add_foreign_key "tracks", "scores"
 end
