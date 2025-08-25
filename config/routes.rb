@@ -8,6 +8,9 @@ Rails.application.routes.draw do
 
       resources :projects do
         resources :scores do
+          member do
+            post :import
+          end
           resources :tracks, only: [:index, :create, :update, :destroy]
         end
       end
