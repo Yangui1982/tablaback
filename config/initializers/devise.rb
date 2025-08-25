@@ -47,7 +47,7 @@ Devise.setup do |config|
   # You can also supply a hash where the value is a boolean determining whether
   # or not authentication should be aborted when the value is not present.
   # config.authentication_keys = [:email]
-
+  config.navigational_formats = []
   # Configure parameters from the request object used for authentication. Each entry
   # given should be a request method and it will automatically be passed to the
   # find_for_authentication method and considered in your model lookup. For instance,
@@ -312,8 +312,8 @@ Devise.setup do |config|
   # config.sign_in_after_change_password = true
   config.jwt do |jwt|
     jwt.secret = Rails.application.credentials.jwt_secret || ENV['JWT_SECRET']
-    jwt.dispatch_requests = [['POST', %r{^/api/v1/auth/sign_in$}]]
-    jwt.revocation_requests = [['DELETE', %r{^/api/v1/auth/sign_out$}]]
+    jwt.dispatch_requests = [['POST', %r{^/api/v1/auth/login$}]]
+    jwt.revocation_requests = [['DELETE', %r{^/api/v1/auth/logout$}]]
     jwt.expiration_time = 2.days.to_i
   end
 
