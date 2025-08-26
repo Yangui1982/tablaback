@@ -3,7 +3,7 @@ class CreateScores < ActiveRecord::Migration[7.1]
     create_table :scores do |t|
       t.references :project, null: false, foreign_key: true
       t.string :title
-      t.string :status
+      t.integer :status, null: false, default: 0
       t.string :imported_format
       t.string :key_sig
       t.string :time_sig
