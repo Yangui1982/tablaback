@@ -14,6 +14,7 @@ Rails.application.routes.draw do
           resources :tracks, only: [:index, :create, :update, :destroy]
         end
       end
+      resources :uploads, only: :create
     end
   end
 

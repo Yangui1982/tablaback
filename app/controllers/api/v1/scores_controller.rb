@@ -1,7 +1,7 @@
 class Api::V1::ScoresController < ApplicationController
   include ScoreDefaults
   before_action :set_project
-  before_action :set_score, only: %i[show update destroy]
+  before_action :set_score, only: %i[show update destroy import]
 
   def index
     render json: @project.scores.order(created_at: :desc)
