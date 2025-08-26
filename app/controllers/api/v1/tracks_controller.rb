@@ -1,14 +1,20 @@
 class Api::V1::TracksController < ApplicationController
+  before_action :set_project
   before_action :set_score
-  before_action :set_track, only: %i[update destroy]
+  before_action :set_track, only: [:show, :update, :destroy]
 
   def index
-    render json: @score.tracks.order(created_at: :asc)
+    render json: @score.tracks.order(created_at: :desc)
+  end
+
+  def show
+    render json: @track
   end
 
   def create
     track = @score.tracks.new(track_params)
     if track.save
+      # tracks_count est MAJ automatiquement
       render json: track, status: :created
     else
       render json: { errors: track.errors.full_messages }, status: :unprocessable_entity
@@ -29,8 +35,13 @@ class Api::V1::TracksController < ApplicationController
   end
 
   private
+
+  def set_project
+    @project = current_user.projects.find(params[:project_id])
+  end
+
   def set_score
-    @score = current_user.projects.find(params[:project_id]).scores.find(params[:score_id])
+    @score = @project.scores.find(params[:score_id])
   end
 
   def set_track
@@ -38,6 +49,6 @@ class Api::V1::TracksController < ApplicationController
   end
 
   def track_params
-    params.require(:track).permit(:name, :instrument, :tuning, :capo, :channel)
+    params.require(:track).permit(:name, :instrument, :tuning, :capo, :midi_channel)
   end
 end

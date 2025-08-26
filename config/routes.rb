@@ -11,7 +11,7 @@ Rails.application.routes.draw do
           member do
             post :import
           end
-          resources :tracks, only: [:index, :create, :update, :destroy]
+          resources :tracks, only: [:index, :show, :create, :update, :destroy]
         end
       end
       resources :uploads, only: :create
