@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_25_135748) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_26_101030) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -59,7 +59,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_25_135748) do
   create_table "scores", force: :cascade do |t|
     t.bigint "project_id", null: false
     t.string "title"
-    t.string "status"
+    t.integer "status", default: 0, null: false
     t.string "imported_format"
     t.string "key_sig"
     t.string "time_sig"
@@ -67,7 +67,11 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_25_135748) do
     t.jsonb "doc"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "tracks_count", default: 0, null: false
+    t.index ["project_id", "title"], name: "index_scores_on_project_id_and_title", unique: true
     t.index ["project_id"], name: "index_scores_on_project_id"
+    t.index ["status"], name: "index_scores_on_status"
+    t.index ["tracks_count"], name: "index_scores_on_tracks_count"
   end
 
   create_table "tracks", force: :cascade do |t|
