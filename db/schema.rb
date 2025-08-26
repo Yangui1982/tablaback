@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_26_101030) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_26_203237) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -80,10 +80,14 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_26_101030) do
     t.string "instrument"
     t.string "tuning"
     t.integer "capo"
-    t.integer "channel"
+    t.integer "midi_channel"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["midi_channel"], name: "index_tracks_on_midi_channel"
+    t.index ["score_id", "midi_channel"], name: "index_tracks_on_score_id_and_midi_channel_unique", unique: true, where: "(midi_channel IS NOT NULL)"
+    t.index ["score_id", "name"], name: "index_tracks_on_score_id_and_name", unique: true
     t.index ["score_id"], name: "index_tracks_on_score_id"
+    t.check_constraint "midi_channel IS NULL OR midi_channel >= 1 AND midi_channel <= 16", name: "midi_channel_range_check"
   end
 
   create_table "users", force: :cascade do |t|

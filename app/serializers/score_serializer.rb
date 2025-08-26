@@ -1,7 +1,7 @@
 class ScoreSerializer < ActiveModel::Serializer
   attributes :id, :title, :status, :imported_format,
              :key_sig, :time_sig, :tempo, :doc, :source_url,
-             :created_at, :updated_at
+             :created_at, :updated_at, :tracks_count
 
   has_many :tracks
 
