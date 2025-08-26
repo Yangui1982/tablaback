@@ -1,7 +1,7 @@
 class Api::V1::ScoresController < ApplicationController
   include ScoreDefaults
   before_action :set_project
-  before_action :set_score, only: %i[show update destroy]
+  before_action :set_score, only: %i[show update destroy import]
 
   def index
     render json: @project.scores.order(created_at: :desc)
@@ -34,6 +34,22 @@ class Api::V1::ScoresController < ApplicationController
     head :no_content
   end
 
+  def import
+    return render(json: { error: 'file_missing' }, status: :bad_request) unless params[:file].present?
+
+    @score.source_file.attach(params[:file])
+    unless @score.source_file.attached?
+      return render(json: { error: 'attach_failed' }, status: :unprocessable_entity)
+    end
+    @score.update!(
+      status: :ready,
+      imported_format: infer_format(params[:file]),
+      doc: @score.doc.presence || default_doc(@score.title)
+    )
+
+    render json: { ok: true, status: @score.status }
+  end
+
   private
   def set_project
     @project = current_user.projects.find(params[:project_id])
@@ -45,5 +61,12 @@ class Api::V1::ScoresController < ApplicationController
 
   def score_params
     params.require(:score).permit(:title, :tempo, :status, :imported_format, :key_sig, :time_sig, doc: {})
+  end
+
+  def infer_format(file_param)
+    ext = File.extname(file_param.original_filename).downcase
+    return 'guitarpro' if %w[.gp3 .gp4 .gp5 .gpx .gp].include?(ext)
+    return 'musicxml'  if %w[.xml .musicxml].include?(ext)
+    'unknown'
   end
 end
