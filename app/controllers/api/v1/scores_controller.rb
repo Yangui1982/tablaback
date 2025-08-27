@@ -4,24 +4,28 @@ class Api::V1::ScoresController < ApplicationController
   before_action :set_score, only: %i[show update destroy import]
 
   def index
-    render json: @project.scores.order(created_at: :desc)
+    scores = policy_scope(@project.scores).order(created_at: :desc)
+    render json: scores
   end
 
   def show
+    authorize @score
     render json: @score
   end
 
   def create
     title = params.dig(:score, :title) || "Untitled"
-    score = @project.scores.new(score_params.merge(doc: default_doc(title)))
-    if score.save
-      render json: score, status: :created
+    @score = @project.scores.new(score_params.merge(doc: default_doc(title)))
+    authorize @score
+    if @score.save
+      render json: @score, status: :created
     else
       render json: { errors: score.errors.full_messages }, status: :unprocessable_content
     end
   end
 
   def update
+    authorize @score
     if @score.update(score_params)
       render json: @score
     else
@@ -30,11 +34,14 @@ class Api::V1::ScoresController < ApplicationController
   end
 
   def destroy
+    authorize @score
     @score.destroy!
     head :no_content
   end
 
   def import
+    authorize @score, :import?
+
     return render(json: { error: 'file_missing' }, status: :bad_request) unless params[:file].present?
 
     @score.source_file.attach(params[:file])
@@ -52,11 +59,12 @@ class Api::V1::ScoresController < ApplicationController
 
   private
   def set_project
-    @project = current_user.projects.find(params[:project_id])
+    @project = policy_scope(Project).find(params[:project_id])
+    authorize @project, :show?
   end
 
   def set_score
-    @score = @project.scores.find(params[:id])
+    @score = policy_scope(@project.scores).find(params[:id])
   end
 
   def score_params

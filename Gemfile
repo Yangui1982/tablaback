@@ -53,7 +53,7 @@ group :development, :test do
   gem "faker"
   gem 'shoulda-matchers', '~> 5.0'
   gem "dotenv-rails"
-
+  gem "pundit-matchers", "~> 1.8"
 end
 
 group :development do

@@ -1,13 +1,23 @@
 class Api::V1::UploadsController < ApplicationController
   include ScoreDefaults
   before_action :authenticate_user!
+  skip_after_action :verify_authorized
+  skip_after_action :verify_policy_scoped
 
   def create
     file = params[:file]
     return render json: { error: 'file_missing' }, status: :bad_request unless file.present?
 
     project = resolve_project!
+    return if performed?
+
     score   = resolve_score!(project)
+    return if performed?
+
+    imported_format = infer_format(file)
+    if imported_format == "unknown"
+      return render json: { error: "unsupported_type" }, status: :unprocessable_content
+    end
 
     score.source_file.attach(file)
     unless score.source_file.attached?
@@ -20,7 +30,7 @@ class Api::V1::UploadsController < ApplicationController
       doc: score.doc.presence || default_doc(score.title)
     )
 
-    # ImportScoreJob.perform_later(score.id) # sinon commente cette ligne
+    ImportScoreJob.perform_later(score.id)
 
     render json: {
       ok: true,
@@ -34,27 +44,16 @@ class Api::V1::UploadsController < ApplicationController
 
   private
 
-  # --- Résolution Project ---
-  # Priorité :
-  # 1) project_id (doit appartenir au current_user)
-  # 2) project_title => création si non trouvé (on choisit créer pour l’UX)
-  # 3) sinon => 400
   def resolve_project!
     if params[:project_id].present?
       current_user.projects.find(params[:project_id])
     elsif params[:project_title].present?
-      # on crée toujours un projet (ou tu peux chercher un existant portant ce titre si tu préfères)
       current_user.projects.create!(title: params[:project_title])
     else
       render(json: { error: 'project_missing', detail: 'Passer project_id OU project_title' }, status: :bad_request) and return
     end
   end
 
-  # --- Résolution Score ---
-  # Priorité :
-  # 1) score_id dans le project (sécurisé par ownership du project)
-  # 2) score_title => création
-  # 3) sinon => crée un score "Untitled"
   def resolve_score!(project)
     if params[:score_id].present?
       project.scores.find(params[:score_id])
@@ -64,7 +63,6 @@ class Api::V1::UploadsController < ApplicationController
     end
   end
 
-  # Extension → format
   def infer_format(file_param)
     name = if file_param.respond_to?(:original_filename)
       file_param.original_filename.to_s

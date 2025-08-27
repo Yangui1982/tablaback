@@ -1,5 +1,8 @@
 class Api::V1::AuthController < ApplicationController
   skip_before_action :authenticate_user!, only: :login
+  skip_after_action :verify_authorized
+  skip_after_action :verify_policy_scoped
+
 
   def login
     user = User.find_by(email: params[:email])
