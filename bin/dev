@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROCFILE="${PROCFILE:-Procfile.dev}"
+ENVFILES="${ENVFILES:-.env}"
+
+if ! command -v foreman >/dev/null 2>&1; then
+  echo "Foreman n'est pas installé. Installe-le :  gem install foreman" >&2
+  exit 127
+fi
+
+# Si tu veux chaîner plusieurs fichiers env : export ENVFILES=".env,.env.development"
+if [ -n "${ENVFILES:-}" ] && [ "$ENVFILES" != ".env" ]; then
+  exec foreman start -f "$PROCFILE" --env "$ENVFILES" "$@"
+else
+  exec foreman start -f "$PROCFILE" "$@"
+fi
+
