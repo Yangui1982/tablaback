@@ -14,7 +14,6 @@ class Api::V1::TracksController < ApplicationController
   def create
     track = @score.tracks.new(track_params)
     if track.save
-      # tracks_count est MAJ automatiquement
       render json: track, status: :created
     else
       render json: { errors: track.errors.full_messages }, status: :unprocessable_entity
@@ -27,6 +26,16 @@ class Api::V1::TracksController < ApplicationController
     else
       render json: { errors: @track.errors.full_messages }, status: :unprocessable_entity
     end
+  rescue ActiveRecord::RecordNotUnique => e
+    msg =
+      if e.message.include?('index_tracks_on_score_id_and_name')
+        "Le nom de piste est déjà utilisé dans cette partition"
+      elsif e.message.include?('index_tracks_on_score_id_and_midi_channel_unique')
+        "Le canal MIDI est déjà utilisé dans cette partition"
+      else
+        "Contrainte d'unicité violée"
+      end
+    render json: { errors: [msg] }, status: :unprocessable_entity
   end
 
   def destroy
