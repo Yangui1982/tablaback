@@ -21,7 +21,11 @@ gem "active_model_serializers"
 gem "active_storage_validations"
 gem "sidekiq"
 gem "redis", ">= 4.0.1"
-
+gem "sentry-rails"
+gem "sentry-ruby"
+gem "sentry-sidekiq"
+gem "rack-session", "~> 2.0"
+gem "foreman"
 # Use Kredis to get higher-level data types in Redis [https://github.com/rails/kredis]
 # gem "kredis"
 gem "paper_trail"
@@ -48,6 +52,8 @@ group :development, :test do
   gem "factory_bot_rails"
   gem "faker"
   gem 'shoulda-matchers', '~> 5.0'
+  gem "dotenv-rails"
+
 end
 
 group :development do
