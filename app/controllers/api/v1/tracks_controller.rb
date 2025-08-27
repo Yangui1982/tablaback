@@ -4,41 +4,36 @@ class Api::V1::TracksController < ApplicationController
   before_action :set_track, only: [:show, :update, :destroy]
 
   def index
-    render json: @score.tracks.order(created_at: :desc)
+    tracks = policy_scope(@score.tracks).order(created_at: :desc)
+    render json: tracks
   end
 
   def show
+    authorize @track
     render json: @track
   end
 
   def create
-    track = @score.tracks.new(track_params)
-    if track.save
-      render json: track, status: :created
+    @track = @score.tracks.new(track_params)
+    authorize @track
+    if @track.save
+      render json: @track, status: :created
     else
-      render json: { errors: track.errors.full_messages }, status: :unprocessable_content
+      render json: { errors: @track.errors.full_messages }, status: :unprocessable_content
     end
   end
 
   def update
+    authorize @track
     if @track.update(track_params)
       render json: @track
     else
       render json: { errors: @track.errors.full_messages }, status: :unprocessable_content
     end
-  rescue ActiveRecord::RecordNotUnique => e
-    msg =
-      if e.message.include?('index_tracks_on_score_id_and_name')
-        "Le nom de piste est déjà utilisé dans cette partition"
-      elsif e.message.include?('index_tracks_on_score_id_and_midi_channel_unique')
-        "Le canal MIDI est déjà utilisé dans cette partition"
-      else
-        "Contrainte d'unicité violée"
-      end
-    render json: { errors: [msg] }, status: :unprocessable_content
   end
 
   def destroy
+    authorize @track
     @track.destroy!
     head :no_content
   end
@@ -46,15 +41,17 @@ class Api::V1::TracksController < ApplicationController
   private
 
   def set_project
-    @project = current_user.projects.find(params[:project_id])
+    @project = policy_scope(Project).find(params[:project_id])
+    authorize @project, :show?
   end
 
   def set_score
-    @score = @project.scores.find(params[:score_id])
+    @score = policy_scope(@project.scores).find(params[:score_id])
+    authorize @score, :show?
   end
 
   def set_track
-    @track = @score.tracks.find(params[:id])
+    @track = policy_scope(@score.tracks).find(params[:id])
   end
 
   def track_params

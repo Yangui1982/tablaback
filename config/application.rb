@@ -45,6 +45,7 @@ module Tablaback
       'ActiveRecord::RecordInvalid' => :unprocessable_content,
       'ActionController::UnpermittedParameters' => :unprocessable_content
     )
+    config.action_controller.action_on_unpermitted_parameters = :raise
 
     config.active_job.queue_adapter = :sidekiq
     # Préfixe de nom de file par env (utile quand on a plusieurs env qui partagent un Redis)
