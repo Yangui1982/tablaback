@@ -51,6 +51,32 @@ RSpec.describe Score, type: :model do
     end
   end
 
+  describe '#ensure_doc!' do
+    it 'remplit doc avec default_doc(title) si doc est nil via la validation' do
+      s = build(:score, project: project, doc: nil, title: 'Custom Title')
+      expect(s.doc).to be_nil
+
+      s.valid?
+
+      doc = s.doc.deep_symbolize_keys
+
+      expect(doc).to be_present
+      expect(doc[:title]).to eq('Custom Title')
+      expect(doc[:schema_version]).to eq(1)
+      expect(doc[:tempo]).to eq({ bpm: 120, map: [] })
+      expect(doc[:tracks]).to eq([])
+      expect(doc[:measures]).to eq([])
+    end
+
+    it 'ne modifie pas doc si déjà présent' do
+      existing_doc = { schema_version: 1, title: 'Existing', tempo: { bpm: 90, map: [] }, tracks: [1], measures: [2] }
+      s = build(:score, project: project, doc: existing_doc)
+      s.valid?
+
+      expect(s.doc).to eq(existing_doc.deep_stringify_keys)
+    end
+  end
+
   describe 'enum status' do
     it 'a le mapping entier attendu et la valeur par défaut' do
       expect(described_class.statuses).to eq(

@@ -15,6 +15,6 @@ class ApplicationController < ActionController::API
         "Contrainte d'unicité violée."
       end
 
-    render json: { error: message }, status: :unprocessable_entity
+    render json: { error: message }, status: :unprocessable_content
   end
 end

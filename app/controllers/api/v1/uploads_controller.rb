@@ -11,7 +11,7 @@ class Api::V1::UploadsController < ApplicationController
 
     score.source_file.attach(file)
     unless score.source_file.attached?
-      return render json: { error: 'attach_failed' }, status: :unprocessable_entity
+      return render json: { error: 'attach_failed' }, status: :unprocessable_content
     end
 
     score.update!(

@@ -17,7 +17,7 @@ class Api::V1::ScoresController < ApplicationController
     if score.save
       render json: score, status: :created
     else
-      render json: { errors: score.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: score.errors.full_messages }, status: :unprocessable_content
     end
   end
 
@@ -25,7 +25,7 @@ class Api::V1::ScoresController < ApplicationController
     if @score.update(score_params)
       render json: @score
     else
-      render json: { errors: @score.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: @score.errors.full_messages }, status: :unprocessable_content
     end
   end
 
@@ -39,7 +39,7 @@ class Api::V1::ScoresController < ApplicationController
 
     @score.source_file.attach(params[:file])
     unless @score.source_file.attached?
-      return render(json: { error: 'attach_failed' }, status: :unprocessable_entity)
+      return render(json: { error: 'attach_failed' }, status: :unprocessable_content)
     end
     @score.update!(
       status: :ready,
