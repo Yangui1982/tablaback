@@ -313,6 +313,8 @@ GEM
       rubocop-ast (>= 1.44.0, < 2.0)
     ruby-progressbar (1.13.0)
     securerandom (0.4.1)
+    shoulda-matchers (5.3.0)
+      activesupport (>= 5.2.0)
     sidekiq (8.0.7)
       connection_pool (>= 2.5.0)
       json (>= 2.9.0)
@@ -366,6 +368,7 @@ DEPENDENCIES
   redis (>= 4.0.1)
   rspec-rails
   rubocop-rails
+  shoulda-matchers (~> 5.0)
   sidekiq
   tzinfo-data
 

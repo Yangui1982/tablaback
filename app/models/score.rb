@@ -1,4 +1,7 @@
 class Score < ApplicationRecord
+  include ScoreDefaults
+  before_validation :ensure_doc!
+
   belongs_to :project
   has_many :tracks, dependent: :destroy
 
@@ -42,9 +45,7 @@ class Score < ApplicationRecord
   private
 
   def ensure_doc!
-    return if doc.present?
-    self.doc = { schema_version: 1, title: title.presence || "Untitled",
-                 tempo: { bpm: 120, map: [] }, tracks: [], measures: [] }
+    self.doc = default_doc(title) if doc.blank?
   end
 
   def exports_require_source
