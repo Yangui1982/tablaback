@@ -9,7 +9,7 @@ RSpec.describe Track, type: :model do
   describe 'factory' do
     it 'crée un track valide via FactoryBot' do
       track = build(:track, score: score)
-      expect(track).to be_valid
+      expect(track).to be_valid, -> { "invalide: #{track.errors.full_messages.join(', ')}" }
     end
   end
 

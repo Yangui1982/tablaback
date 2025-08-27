@@ -16,7 +16,7 @@ class Api::V1::TracksController < ApplicationController
     if track.save
       render json: track, status: :created
     else
-      render json: { errors: track.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: track.errors.full_messages }, status: :unprocessable_content
     end
   end
 
@@ -24,7 +24,7 @@ class Api::V1::TracksController < ApplicationController
     if @track.update(track_params)
       render json: @track
     else
-      render json: { errors: @track.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: @track.errors.full_messages }, status: :unprocessable_content
     end
   rescue ActiveRecord::RecordNotUnique => e
     msg =
@@ -35,7 +35,7 @@ class Api::V1::TracksController < ApplicationController
       else
         "Contrainte d'unicité violée"
       end
-    render json: { errors: [msg] }, status: :unprocessable_entity
+    render json: { errors: [msg] }, status: :unprocessable_content
   end
 
   def destroy
