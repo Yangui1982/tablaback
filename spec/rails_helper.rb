@@ -12,6 +12,7 @@ require 'rspec/rails'
 require "pundit/rspec"
 require "pundit/matchers"
 require 'devise/jwt/test_helpers'
+require "active_job/test_helper"
 
 # Add additional requires below this line. Rails is not loaded until this point!
 
@@ -62,6 +63,12 @@ RSpec.configure do |config|
   #
   config.include Pundit::Matchers, type: :policy
 
+  config.include ActiveJob::TestHelper
+
+  config.before(:each) do
+    clear_enqueued_jobs
+    clear_performed_jobs
+  end
   # You can also this infer these behaviours automatically by location, e.g.
   # /spec/models would pull in the same behaviour as `type: :model` but this
   # behaviour is considered legacy and will be removed in a future version.
