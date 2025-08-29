@@ -15,14 +15,20 @@ class Score < ApplicationRecord
     application/vnd.recordare.musicxml
   ].freeze
   ALLOWED_GP_OCTET = %w[application/octet-stream].freeze
+  ALLOWED_MIDI = [
+    /\Aaudio\/(midi|mid)\z/,
+    /\Aaudio\/x-midi\z/
+  ].freeze
 
   validates :source_file,
             content_type: (ALLOWED_XML + ALLOWED_GP_OCTET),
             size: { less_than: 20.megabytes },
             if: -> { source_file.attached? }
 
+  validate :source_file_extension_whitelist, if: -> { source_file.attached? }
+
   validates :export_midi_file,
-            content_type: %r{\Aaudio/(midi|mid)\z},
+            content_type: ALLOWED_MIDI,
             size: { less_than: 20.megabytes },
             if: -> { export_midi_file.attached? }
 
@@ -37,7 +43,6 @@ class Score < ApplicationRecord
   validates :doc, presence: true
   validates :tempo, numericality: { only_integer: true, greater_than: 0 }, allow_nil: true
 
-  before_validation :ensure_doc!
   validate :exports_require_source
 
   after_destroy_commit :purge_attachments
@@ -46,6 +51,14 @@ class Score < ApplicationRecord
 
   def ensure_doc!
     self.doc = default_doc(title) if doc.blank?
+  end
+
+  def source_file_extension_whitelist
+    allowed_exts = %w[.gp3 .gp4 .gp5 .gpx .gp .xml .musicxml .mxl]
+    ext = File.extname(source_file.filename.to_s).downcase
+    unless allowed_exts.include?(ext)
+      errors.add(:source_file, "extension non supportée. Autorisées: #{allowed_exts.join(' ')}")
+    end
   end
 
   def exports_require_source
