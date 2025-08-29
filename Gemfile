@@ -25,6 +25,7 @@ gem "sentry-rails"
 gem "sentry-ruby"
 gem "sentry-sidekiq"
 gem "rack-session", "~> 2.0"
+gem "rack-attack"
 gem "foreman"
 # Use Kredis to get higher-level data types in Redis [https://github.com/rails/kredis]
 # gem "kredis"
@@ -43,7 +44,10 @@ gem "faraday"
 # gem "image_processing", "~> 1.2"
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
-# gem "rack-cors"
+gem "rack-cors"
+
+gem "pagy", "~> 6.4"
+
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem

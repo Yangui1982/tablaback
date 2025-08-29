@@ -1,38 +1,43 @@
 class ApplicationController < ActionController::API
   include Pundit::Authorization
+  include ErrorRendering
+  include Pagy::Backend
+
+  DEFAULT_PER_PAGE = 20
+  MAX_PER_PAGE     = 100
 
   before_action :authenticate_user!
 
   rescue_from Pundit::NotAuthorizedError do
-    render json: { error: "forbidden" }, status: :forbidden
+    render_error("forbidden", "Vous n'êtes pas autorisé à effectuer cette action", status: :forbidden)
   end
 
   rescue_from ActiveRecord::RecordNotFound do |e|
-    render json: { error: "not_found", message: e.message }, status: :not_found
+    render_error("not_found", e.message, status: :not_found)
   end
 
   rescue_from ActionController::ParameterMissing do |e|
-    render json: { error: "bad_request", message: e.message }, status: :bad_request
+    render_error("bad_request", e.message, status: :bad_request)
   end
 
   rescue_from ActiveRecord::RecordNotUnique, with: :handle_unique_constraint
 
-  after_action :verify_authorized,     except: :index, unless: :skip_pundit?
-  after_action :verify_policy_scoped,  only:   :index, unless: :skip_pundit?
+  after_action :verify_authorized,    except: :index, unless: :skip_pundit?
+  after_action :verify_policy_scoped, only:   :index, unless: :skip_pundit?
 
   private
 
   def handle_unique_constraint(exception)
     message =
-      if exception.message.include?('index_tracks_on_score_id_and_name')
+      if exception.message.include?("index_tracks_on_score_id_and_name")
         "Une piste avec ce nom existe déjà dans ce score."
-      elsif exception.message.include?('index_tracks_on_score_id_and_midi_channel_unique')
+      elsif exception.message.include?("index_tracks_on_score_id_and_midi_channel_unique")
         "Une piste utilise déjà ce canal MIDI dans ce score."
       else
         "Contrainte d'unicité violée."
       end
 
-    render json: { error: message }, status: :unprocessable_content
+    render_error("unique_violation", message, status: :unprocessable_entity)
   end
 
   def skip_pundit?
@@ -40,5 +45,28 @@ class ApplicationController < ActionController::API
       request.path.start_with?("/rails/") ||
       request.path.start_with?("/sidekiq") ||
       self.class.name.start_with?("ActiveStorage::")
+  end
+
+  def pagination_params
+    page = params[:page].to_i
+    per  = params[:per].to_i
+    page = 1 if page <= 0
+    per  = DEFAULT_PER_PAGE if per <= 0
+    per  = MAX_PER_PAGE if per > MAX_PER_PAGE
+    { page:, per: }
+  end
+
+  def render_paginated(scope, each_serializer:, root: :data, extra_meta: {})
+    @pagy, records = pagy(scope, items: pagination_params[:per], page: pagination_params[:page])
+
+    render json: {
+      root => ActiveModelSerializers::SerializableResource.new(records, each_serializer:),
+      meta: {
+        page:  @pagy.page,
+        pages: @pagy.pages,
+        count: @pagy.count,
+        per:   @pagy.items
+      }.merge(extra_meta)
+    }
   end
 end

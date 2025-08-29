@@ -6,7 +6,7 @@ class Api::V1::UploadsController < ApplicationController
 
   def create
     file = params[:file]
-    return render json: { error: 'file_missing' }, status: :bad_request unless file.present?
+    return render json: { error: 'file_missing', "fichier manquant" }, status: :bad_request unless file.present?
 
     project = resolve_project!
     return if performed?
@@ -16,12 +16,12 @@ class Api::V1::UploadsController < ApplicationController
 
     imported_format = infer_format(file)
     if imported_format == "unknown"
-      return render json: { error: "unsupported_type" }, status: :unprocessable_content
+      return render json: { error: "unsupported_format", "format de fichier non supporté" }, status: :unprocessable_content
     end
 
     score.source_file.attach(file)
     unless score.source_file.attached?
-      return render json: { error: 'attach_failed' }, status: :unprocessable_content
+      return render json: { error: 'attach_failed', "échec de l'attachement" }, status: :unprocessable_content
     end
 
     score.update!(
@@ -50,7 +50,7 @@ class Api::V1::UploadsController < ApplicationController
     elsif params[:project_title].present?
       current_user.projects.create!(title: params[:project_title])
     else
-      render(json: { error: 'project_missing', detail: 'Passer project_id OU project_title' }, status: :bad_request) and return
+      render(json: { error: 'project_missing', detail: 'projet manquant, passer project_id OU project_title' }, status: :bad_request) and return
     end
   end
 

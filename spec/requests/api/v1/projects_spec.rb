@@ -6,13 +6,37 @@ RSpec.describe "Projects API", type: :request do
   let!(:mine)     { create(:project, user: owner) }
   let!(:not_mine) { create(:project, user: stranger) }
 
+  it "pagine les résultats" do
+    me = create(:user, password: "secret1234")
+    create_list(:project, 15, user: me)
+
+    get "/api/v1/projects?page=2&per=5", headers: auth_headers(me, strategy: :login)
+
+    expect(response).to have_http_status(:ok)
+    expect(json_data.size).to eq(5)
+    expect(json_meta["page"]).to eq(2)
+    expect(json_meta["per"]).to eq(5)
+    expect(json_meta["pages"]).to eq(3)
+    expect(json_meta["count"]).to eq(15)
+  end
+
   describe "GET /api/v1/projects" do
     it "ne renvoie que mes projets (policy_scope)" do
-      get "/api/v1/projects", headers: auth_headers(owner)
+      me    = create(:user, password: "secret1234")
+      other = create(:user, password: "secret1234")
+      p1 = create(:project, user: me)
+      p2 = create(:project, user: me)
+      _  = create(:project, user: other)
+
+      get "/api/v1/projects", headers: auth_headers(me, strategy: :login)
+
       expect(response).to have_http_status(:ok)
-      ids = JSON.parse(response.body).map { |h| h["id"] }
-      expect(ids).to include(mine.id)
-      expect(ids).not_to include(not_mine.id)
+
+      ids = json_data.map { |h| h["id"] }
+      expect(ids).to match_array([p1.id, p2.id])
+
+      expect(json_meta.keys).to include("page", "pages", "count", "per")
+      expect(json_meta["count"]).to eq(2)
     end
   end
 
@@ -22,7 +46,7 @@ RSpec.describe "Projects API", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it "404 sur projet d’autrui (scope.find)" do
+    it "404 sur projet d'autrui (scope.find)" do
       get "/api/v1/projects/#{not_mine.id}", headers: auth_headers(owner)
       expect(response).to have_http_status(:not_found)
     end
