@@ -10,7 +10,7 @@ class Api::V1::AuthController < ApplicationController
       sign_in(user, store: false)
       render json: { ok: true, user: { id: user.id, email: user.email } }
     else
-      render json: { error: 'invalid_credentials', "email ou mot de passe incorrect" }, status: :unauthorized
+      render_error("invalid_credentials", "email ou mot de passe incorrect", status: :unauthorized)
     end
   end
 

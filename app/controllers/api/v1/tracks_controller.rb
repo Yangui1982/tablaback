@@ -49,7 +49,7 @@ class Api::V1::TracksController < ApplicationController
     if @track.save
       render json: @track, status: :created
     else
-      render_error("validation_error", @track.errors.full_messages, status: :unprocessable_entity)
+      render_error("validation_error", @track.errors.full_messages, status: :unprocessable_content)
     end
   end
 
@@ -58,7 +58,7 @@ class Api::V1::TracksController < ApplicationController
     if @track.update(track_params)
       render json: @track
     else
-      render_error("validation_error", @track.errors.full_messages, status: :unprocessable_entity)
+      render_error("validation_error", @track.errors.full_messages, status: :unprocessable_content)
     end
   end
 
