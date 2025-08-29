@@ -1,11 +1,39 @@
 class Api::V1::ScoresController < ApplicationController
   include ScoreDefaults
+  include Sortable
+  include Filterable
+
   before_action :set_project
   before_action :set_score, only: %i[show update destroy import]
 
   def index
-    scores = policy_scope(@project.scores).order(created_at: :desc)
-    render json: scores
+    scope = policy_scope(@project.scores)
+    scope = apply_query(scope, on: "title")
+    scope = apply_sort(
+      scope,
+      allowed: %w[created_at updated_at title tempo status tracks_count],
+      default: "created_at",
+      dir_default: "desc"
+    )
+
+    page = params[:page].to_i
+    per  = params[:per].to_i
+    page = 1   if page <= 0
+    per  = 20  if per <= 0
+    per  = 100 if per > 100
+
+    @pagy, records = pagy(scope, items: per, page: page)
+
+    render json: {
+      data: ActiveModelSerializers::SerializableResource.new(records, each_serializer: ScoreSerializer),
+      meta: {
+        page:  @pagy.page,
+        pages: @pagy.pages,
+        count: @pagy.count,
+        per:   @pagy.items,
+        project_id: @project.id
+      }
+    }
   end
 
   def show
@@ -14,13 +42,14 @@ class Api::V1::ScoresController < ApplicationController
   end
 
   def create
-    title = params.dig(:score, :title) || "Untitled"
+    title  = params.dig(:score, :title) || "Untitled"
     @score = @project.scores.new(score_params.merge(doc: default_doc(title)))
     authorize @score
+
     if @score.save
       render json: @score, status: :created
     else
-      render json: { errors: score.errors.full_messages }, status: :unprocessable_content
+      render_error("validation_error", @score.errors.full_messages, status: :unprocessable_entity)
     end
   end
 
@@ -29,7 +58,7 @@ class Api::V1::ScoresController < ApplicationController
     if @score.update(score_params)
       render json: @score
     else
-      render json: { errors: @score.errors.full_messages }, status: :unprocessable_content
+      render_error("validation_error", @score.errors.full_messages, status: :unprocessable_entity)
     end
   end
 
@@ -42,15 +71,17 @@ class Api::V1::ScoresController < ApplicationController
   def import
     authorize @score, :import?
 
-    return render(json: { error: 'file_missing' }, status: :bad_request) unless params[:file].present?
+    file = params[:file]
+    return render_error("file_missing", "paramètre file manquant", status: :bad_request) unless file.present?
 
-    @score.source_file.attach(params[:file])
+    @score.source_file.attach(file)
     unless @score.source_file.attached?
-      return render(json: { error: 'attach_failed' }, status: :unprocessable_content)
+      return render_error("attach_failed", "échec de l'attache du fichier", status: :unprocessable_entity)
     end
+
     @score.update!(
       status: :ready,
-      imported_format: infer_format(params[:file]),
+      imported_format: infer_format(file),
       doc: @score.doc.presence || default_doc(@score.title)
     )
 
@@ -58,6 +89,7 @@ class Api::V1::ScoresController < ApplicationController
   end
 
   private
+
   def set_project
     @project = policy_scope(Project).find(params[:project_id])
     authorize @project, :show?
@@ -73,8 +105,8 @@ class Api::V1::ScoresController < ApplicationController
 
   def infer_format(file_param)
     ext = File.extname(file_param.original_filename).downcase
-    return 'guitarpro' if %w[.gp3 .gp4 .gp5 .gpx .gp].include?(ext)
-    return 'musicxml'  if %w[.xml .musicxml].include?(ext)
-    'unknown'
+    return "guitarpro" if %w[.gp3 .gp4 .gp5 .gpx .gp].include?(ext)
+    return "musicxml"  if %w[.xml .musicxml].include?(ext)
+    "unknown"
   end
 end

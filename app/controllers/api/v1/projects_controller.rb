@@ -1,10 +1,37 @@
 class Api::V1::ProjectsController < ApplicationController
-  before_action :authenticate_user!
+  include Sortable
+  include Filterable
+
   before_action :set_project, only: %i[show update destroy]
 
   def index
-    projects = policy_scope(Project).order(created_at: :desc)
-    render json: projects  end
+    scope = policy_scope(Project)
+    scope = apply_query(scope, on: "title")
+    scope = apply_sort(
+      scope,
+      allowed: %w[created_at updated_at title],
+      default: "created_at",
+      dir_default: "desc"
+    )
+
+    page = params[:page].to_i
+    per  = params[:per].to_i
+    page = 1   if page <= 0
+    per  = 20  if per <= 0
+    per  = 100 if per > 100
+
+    @pagy, records = pagy(scope, items: per, page: page)
+
+    render json: {
+      data: ActiveModelSerializers::SerializableResource.new(records, each_serializer: ProjectSerializer),
+      meta: {
+        page:  @pagy.page,
+        pages: @pagy.pages,
+        count: @pagy.count,
+        per:   @pagy.items
+      }
+    }
+  end
 
   def show
     authorize @project
@@ -17,7 +44,7 @@ class Api::V1::ProjectsController < ApplicationController
     if @project.save
       render json: @project, status: :created
     else
-      render json: { errors: @project.errors.full_messages }, status: :unprocessable_content
+      render_error("validation_error", @project.errors.full_messages, status: :unprocessable_entity)
     end
   end
 
@@ -26,7 +53,7 @@ class Api::V1::ProjectsController < ApplicationController
     if @project.update(project_params)
       render json: @project
     else
-      render json: { errors: @project.errors.full_messages }, status: :unprocessable_content
+      render_error("validation_error", @project.errors.full_messages, status: :unprocessable_entity)
     end
   end
 
@@ -37,6 +64,7 @@ class Api::V1::ProjectsController < ApplicationController
   end
 
   private
+
   def set_project
     @project = policy_scope(Project).find(params[:id])
   end

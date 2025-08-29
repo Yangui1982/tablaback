@@ -1,11 +1,40 @@
 class Api::V1::TracksController < ApplicationController
+  include Sortable
+  include Filterable
+
   before_action :set_project
   before_action :set_score
-  before_action :set_track, only: [:show, :update, :destroy]
+  before_action :set_track, only: %i[show update destroy]
 
   def index
-    tracks = policy_scope(@score.tracks).order(created_at: :desc)
-    render json: tracks
+    scope = policy_scope(@score.tracks)
+    scope = apply_query(scope, on: "name")
+    scope = apply_sort(
+      scope,
+      allowed: %w[created_at updated_at name midi_channel],
+      default: "created_at",
+      dir_default: "desc"
+    )
+
+    page = params[:page].to_i
+    per  = params[:per].to_i
+    page = 1   if page <= 0
+    per  = 20  if per <= 0
+    per  = 100 if per > 100
+
+    @pagy, records = pagy(scope, items: per, page: page)
+
+    render json: {
+      data: ActiveModelSerializers::SerializableResource.new(records, each_serializer: TrackSerializer),
+      meta: {
+        page:  @pagy.page,
+        pages: @pagy.pages,
+        count: @pagy.count,
+        per:   @pagy.items,
+        project_id: @project.id,
+        score_id:   @score.id
+      }
+    }
   end
 
   def show
@@ -16,10 +45,11 @@ class Api::V1::TracksController < ApplicationController
   def create
     @track = @score.tracks.new(track_params)
     authorize @track
+
     if @track.save
       render json: @track, status: :created
     else
-      render json: { errors: @track.errors.full_messages }, status: :unprocessable_content
+      render_error("validation_error", @track.errors.full_messages, status: :unprocessable_entity)
     end
   end
 
@@ -28,7 +58,7 @@ class Api::V1::TracksController < ApplicationController
     if @track.update(track_params)
       render json: @track
     else
-      render json: { errors: @track.errors.full_messages }, status: :unprocessable_content
+      render_error("validation_error", @track.errors.full_messages, status: :unprocessable_entity)
     end
   end
 
