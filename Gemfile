@@ -44,7 +44,7 @@ gem "faraday"
 # gem "image_processing", "~> 1.2"
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
-gem "rack-cors"
+
 
 gem "pagy", "~> 6.4"
 
@@ -58,6 +58,7 @@ group :development, :test do
   gem 'shoulda-matchers', '~> 5.0'
   gem "dotenv-rails"
   gem "pundit-matchers", "~> 1.8"
+  gem "rack-cors"
 end
 
 group :development do

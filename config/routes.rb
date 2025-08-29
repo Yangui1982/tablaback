@@ -11,6 +11,7 @@ Rails.application.routes.draw do
     namespace :v1 do
       post   "auth/login",  to: "auth#login"
       delete "auth/logout", to: "auth#logout"
+      get "health", to: "health#show"
 
       resources :projects do
         resources :scores do
@@ -41,6 +42,4 @@ Rails.application.routes.draw do
     end
     # Sinon : ne monte pas le dashboard (sécurité par défaut)
   end
-
-  get "up" => "rails/health#show", as: :rails_health_check
 end

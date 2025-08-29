@@ -51,5 +51,6 @@ module Tablaback
     config.active_job.queue_adapter = :sidekiq
     # Préfixe de nom de file par env (utile quand on a plusieurs env qui partagent un Redis)
     config.active_job.queue_name_prefix = "#{Rails.env}"
+    config.middleware.use Rack::Attack
   end
 end
