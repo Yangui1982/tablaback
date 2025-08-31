@@ -45,8 +45,11 @@ gem "faraday"
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 
-
 gem "pagy", "~> 6.4"
+
+gem "midilib"
+
+gem "nokogiri"
 
 
 group :development, :test do

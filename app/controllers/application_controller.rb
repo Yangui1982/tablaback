@@ -26,6 +26,30 @@ class ApplicationController < ActionController::API
   after_action :verify_policy_scoped, only:   :index, unless: :skip_pundit?
 
   private
+  def render_error(code, payload = nil, status:)
+    body = { code: code }
+
+    case payload
+    when String
+      body[:message] = payload
+    when Array
+      body[:errors]  = payload
+      # Optionnel : fournir aussi un message concaténé si utile aux anciens tests/clients
+      body[:message] = payload.join(", ") unless payload.empty?
+    when Hash
+      body[:details] = payload
+    when NilClass
+      # rien
+    else
+      # Type inattendu → on le range dans details pour ne rien perdre
+      body[:details] = payload
+    end
+
+    # Rétro-compat : certaines specs/clients lisent `error` au lieu de `code`
+    body[:error] = code
+
+    render json: body, status: status
+  end
 
   def handle_unique_constraint(exception)
     message =

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_28_150407) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_31_083542) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -64,11 +64,16 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_28_150407) do
     t.string "key_sig"
     t.string "time_sig"
     t.integer "tempo"
-    t.jsonb "doc"
+    t.jsonb "doc", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "tracks_count", default: 0, null: false
     t.text "import_error"
+    t.string "doc_checksum"
+    t.integer "duration_ticks", default: 0, null: false
+    t.index ["doc"], name: "index_scores_on_doc", using: :gin
+    t.index ["doc_checksum"], name: "index_scores_on_doc_checksum"
+    t.index ["duration_ticks"], name: "index_scores_on_duration_ticks"
     t.index ["project_id", "title"], name: "index_scores_on_project_id_and_title", unique: true
     t.index ["project_id"], name: "index_scores_on_project_id"
     t.index ["status"], name: "index_scores_on_status"
