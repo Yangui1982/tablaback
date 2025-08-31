@@ -1,11 +1,14 @@
 class ScorePolicy < ApplicationPolicy
-  def show?    = owner?
-  def create?  = owner?
-  def update?  = owner?
+  def show? = owner?
+  def create? = owner?
+  def update? = owner?
   def destroy? = owner?
 
-  def import?  = update?
-  def export?  = update?
+  def import? = update?
+  def export? = update?
+  def midi? = show?
+  def midi_by_tracks? = show?
+  def render_midi?  = update?
   # NOTE: Up to Pundit v2.3.1, the inheritance was declared as
   # `Scope < Scope` rather than `Scope < ApplicationPolicy::Scope`.
   # In most cases the behavior will be identical, but if updating existing

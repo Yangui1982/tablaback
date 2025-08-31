@@ -176,6 +176,7 @@ GEM
       net-pop
       net-smtp
     marcel (1.0.4)
+    midilib (4.0.2)
     mini_mime (1.1.5)
     mini_portile2 (2.8.9)
     minitest (5.25.5)
@@ -385,6 +386,8 @@ DEPENDENCIES
   faker
   faraday
   foreman
+  midilib
+  nokogiri
   pagy (~> 6.4)
   paper_trail
   pg (~> 1.1)

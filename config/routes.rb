@@ -11,12 +11,17 @@ Rails.application.routes.draw do
     namespace :v1 do
       post   "auth/login",  to: "auth#login"
       delete "auth/logout", to: "auth#logout"
-      get "health", to: "health#show"
+      get    "health",      to: "health#show"
 
       resources :projects do
         resources :scores do
-          member { post :import }
-          resources :tracks, only: [:index, :show, :create, :update, :destroy]
+          member do
+            post :import
+            get  :midi            # stream le mix (génère si besoin)
+            post :render_midi     # force la régénération du mix
+            get  :midi_by_tracks  # lecture de certaines pistes seulement
+          end
+          resources :tracks, only: %i[index show create update destroy]
         end
       end
 
@@ -29,13 +34,13 @@ Rails.application.routes.draw do
     # Libre en dev/test
     mount Sidekiq::Web => "/sidekiq"
   else
-    # Prod (et éventuellement staging) : protégé par BasicAuth
+    # Prod/Staging : protégé par BasicAuth
     sidekiq_user = ENV["SIDEKIQ_USER"]
     sidekiq_pass = ENV["SIDEKIQ_PASSWORD"]
 
     if sidekiq_user.present? && sidekiq_pass.present?
       Sidekiq::Web.use Rack::Auth::Basic do |u, p|
-        ActiveSupport::SecurityUtils.secure_compare(u, sidekiq_user) &
+        ActiveSupport::SecurityUtils.secure_compare(u, sidekiq_user) &&
           ActiveSupport::SecurityUtils.secure_compare(p, sidekiq_pass)
       end
       mount Sidekiq::Web => "/sidekiq"
