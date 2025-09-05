@@ -78,6 +78,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_31_083542) do
     t.index ["project_id"], name: "index_scores_on_project_id"
     t.index ["status"], name: "index_scores_on_status"
     t.index ["tracks_count"], name: "index_scores_on_tracks_count"
+    t.check_constraint "tempo IS NULL OR tempo > 0", name: "scores_tempo_positive"
   end
 
   create_table "tracks", force: :cascade do |t|

@@ -101,6 +101,11 @@ class Score < ApplicationRecord
     end
   end
 
+  def midi_url
+    return unless export_midi_file.attached?
+    Rails.application.routes.url_helpers.url_for(export_midi_file)
+  end
+
   private
 
   # Remplit un doc par défaut si vide (score vide valide : tracks: [])
