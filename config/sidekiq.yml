@@ -1,7 +1,9 @@
+<% env = ENV.fetch("RAILS_ENV", ENV.fetch("RACK_ENV", "development")) %>
+
 :concurrency: 5
 
 :queues:
-  - [default, 5]
-  - [imports, 5]
-  - [exports, 3]
-  - [mailers, 2]
+  - ["<%= env %>_default", 5]
+  - ["<%= env %>_imports", 5]
+  - ["<%= env %>_exports", 3]
+  - ["<%= env %>_mailers", 2]
