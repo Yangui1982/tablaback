@@ -25,8 +25,8 @@ class Api::V1::UploadsController < ApplicationController
     end
 
     score.update!(
-      status: :ready,
-      imported_format: infer_format(file),
+      status: :processing,
+      imported_format: imported_format,
       doc: score.doc.presence || default_doc(score.title)
     )
 
