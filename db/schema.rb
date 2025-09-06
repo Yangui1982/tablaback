@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_31_083542) do
+ActiveRecord::Schema[7.1].define(version: 2025_09_06_081522) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -49,16 +49,17 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_31_083542) do
   end
 
   create_table "projects", force: :cascade do |t|
-    t.string "title"
+    t.string "title", null: false
     t.bigint "user_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["user_id", "title"], name: "index_projects_on_user_id_and_title", unique: true
     t.index ["user_id"], name: "index_projects_on_user_id"
   end
 
   create_table "scores", force: :cascade do |t|
     t.bigint "project_id", null: false
-    t.string "title"
+    t.string "title", null: false
     t.integer "status", default: 0, null: false
     t.string "imported_format"
     t.string "key_sig"
@@ -74,16 +75,19 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_31_083542) do
     t.index ["doc"], name: "index_scores_on_doc", using: :gin
     t.index ["doc_checksum"], name: "index_scores_on_doc_checksum"
     t.index ["duration_ticks"], name: "index_scores_on_duration_ticks"
+    t.index ["imported_format"], name: "index_scores_on_imported_format"
+    t.index ["project_id", "status"], name: "index_scores_on_project_id_and_status"
     t.index ["project_id", "title"], name: "index_scores_on_project_id_and_title", unique: true
     t.index ["project_id"], name: "index_scores_on_project_id"
     t.index ["status"], name: "index_scores_on_status"
     t.index ["tracks_count"], name: "index_scores_on_tracks_count"
+    t.check_constraint "char_length(title::text) <= 200", name: "scores_title_maxlen"
     t.check_constraint "tempo IS NULL OR tempo > 0", name: "scores_tempo_positive"
   end
 
   create_table "tracks", force: :cascade do |t|
     t.bigint "score_id", null: false
-    t.string "name"
+    t.string "name", null: false
     t.string "instrument"
     t.string "tuning"
     t.integer "capo"
