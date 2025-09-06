@@ -59,6 +59,7 @@ class Score < ApplicationRecord
   # normalise toute assignation (downcase/strip et vide => nil)
   def imported_format=(val)
     fmt = val.to_s.downcase.strip
+    fmt = nil unless VALID_IMPORTED_FORMATS.include?(fmt)
     super(fmt.presence)
   end
 

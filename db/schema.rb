@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_09_06_081522) do
+ActiveRecord::Schema[7.1].define(version: 2025_09_06_085133) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -81,6 +81,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_09_06_081522) do
     t.index ["project_id"], name: "index_scores_on_project_id"
     t.index ["status"], name: "index_scores_on_status"
     t.index ["tracks_count"], name: "index_scores_on_tracks_count"
+    t.check_constraint "(imported_format::text = ANY (ARRAY['mxl'::character varying, 'musicxml'::character varying, 'guitarpro'::character varying]::text[])) OR imported_format IS NULL", name: "scores_imported_format_check"
     t.check_constraint "char_length(title::text) <= 200", name: "scores_title_maxlen"
     t.check_constraint "tempo IS NULL OR tempo > 0", name: "scores_tempo_positive"
   end

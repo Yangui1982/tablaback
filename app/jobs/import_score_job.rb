@@ -33,7 +33,7 @@ class ImportScoreJob < ApplicationJob
         filename  = score.source_file.blob&.filename&.to_s
         byte_size = score.source_file.blob&.byte_size
         imported_format = score.imported_format.presence || infer_format_from_filename(filename)
-        raise "unsupported_format" if imported_format == "unknown"
+        raise "unsupported_format" if imported_format.blank? || imported_format == "unknown"
 
         score.update!(status: :processing, import_error: nil)
       end
