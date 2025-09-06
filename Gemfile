@@ -16,6 +16,7 @@ gem "puma", ">= 5.0"
 gem "devise"
 gem "devise-jwt"
 gem "pundit"
+gem "rubyzip", "~> 2.3"
 # Use Redis adapter to run Action Cable in production
 gem "active_model_serializers"
 gem "active_storage_validations"
