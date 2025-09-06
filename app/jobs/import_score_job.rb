@@ -8,13 +8,15 @@ class ImportScoreJob < ApplicationJob
   retry_on(StandardError, wait: :polynomially_longer, attempts: 8) unless Rails.env.test?
   discard_on ActiveRecord::RecordNotFound
 
-  def perform(score_id)
+  # On accepte un correlation_id optionnel
+  def perform(score_id, correlation_id: nil)
+    cid              = correlation_id.presence || SecureRandom.hex(6)
     filename         = nil
     byte_size        = nil
     imported_format  = nil
     parse_duration_s = nil
 
-    Rails.logger.info("[ImportScoreJob] start score_id=#{score_id}")
+    Rails.logger.info("[ImportScoreJob][cid=#{cid}] start score_id=#{score_id}")
 
     score = Score.find(score_id)
 
@@ -31,38 +33,38 @@ class ImportScoreJob < ApplicationJob
         filename  = score.source_file.blob&.filename&.to_s
         byte_size = score.source_file.blob&.byte_size
         imported_format = score.imported_format.presence || infer_format_from_filename(filename)
-        raise "unsupported_format" if imported_format == "unknown"
+        raise "unsupported_format" if imported_format.blank? || imported_format == "unknown"
 
         score.update!(status: :processing, import_error: nil)
       end
     end
     if should_skip
-      Rails.logger.info("[ImportScoreJob] skip score_id=#{score_id} status=#{score.status}")
+      Rails.logger.info("[ImportScoreJob][cid=#{cid}] skip score_id=#{score_id} status=#{score.status}")
       return
     end
 
-    Rails.logger.info("[ImportScoreJob] meta score_id=#{score_id} format=#{imported_format} filename=#{filename} size=#{byte_size}")
+    Rails.logger.info("[ImportScoreJob][cid=#{cid}] meta score_id=#{score_id} format=#{imported_format} filename=#{filename} size=#{byte_size}")
 
     # ---- Canonisation & assets (sous timeout)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     Timeout.timeout(parse_timeout_seconds) do
-      canonize_and_generate_assets!(score, imported_format)
+      canonize_and_generate_assets!(score, imported_format, cid: cid)
     end
     parse_duration_s = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0).round(3)
 
     # ---- OK → ready
     score.update!(status: :ready)
-    Rails.logger.info("[ImportScoreJob] done score_id=#{score_id} -> ready parse_duration=#{parse_duration_s}s")
+    Rails.logger.info("[ImportScoreJob][cid=#{cid}] done score_id=#{score_id} -> ready parse_duration=#{parse_duration_s}s")
 
   rescue => e
-    handle_failure(score, e, imported_format, filename, byte_size, parse_duration_s)
+    handle_failure(score, e, imported_format, filename, byte_size, parse_duration_s, cid: cid)
     raise e if Rails.env.test?
   end
 
   private
 
   # ========= Étape principale : canoniser + générer assets + indexer =========
-  def canonize_and_generate_assets!(score, imported_format)
+  def canonize_and_generate_assets!(score, imported_format, cid:)
     Dir.mktmpdir("score_#{score.id}_") do |dir|
       cli = MusescoreCli.new
       score.update!(imported_format: imported_format) if imported_format.present?
@@ -76,14 +78,13 @@ class ImportScoreJob < ApplicationJob
       if src_path =~ /\.mxl\z/i
         FileUtils.cp(src_path, mxl_path)
       else
-        # MuseScore choisit le format selon l’extension de sortie
         cli.to_musicxml(src_path, mxl_path) # out=.mxl → MusicXML compressé
       end
 
-      # 3) Générer les assets depuis le .mxl (MuseScore sait lire .mxl)
+      # 3) Générer les assets depuis le .mxl
       mid_path    = File.join(dir, "mix.mid")
       pdf_path    = File.join(dir, "score.pdf")
-      png_pattern = File.join(dir, "page.png") # MuseScore sort page-1.png, page-2.png…
+      png_pattern = File.join(dir, "page.png") # MuseScore sort page-1.png…
 
       cli.to_midi(mxl_path, mid_path)
       cli.to_pdf(mxl_path,  pdf_path)
@@ -101,16 +102,16 @@ class ImportScoreJob < ApplicationJob
       # 6) Métriques & sync
       score.update!(duration_ticks: score.compute_duration_ticks)
       begin
-        score.sync_tracks_from_doc!
+        score.sync_tracks_from_doc!(correlation_id: cid)
       rescue => e
-        Rails.logger.warn("[ImportScoreJob] sync_tracks_from_doc! failed: #{e.class}: #{e.message}")
+        Rails.logger.warn("[ImportScoreJob][cid=#{cid}] sync_tracks_from_doc! failed: #{e.class}: #{e.message}")
       end
 
       # 7) MIDI : purge si pas de notes, sinon attacher si absent
       if any_note_in_index?(index)
         attach_one(score.export_midi_file, mid_path, safe_name(score, ".mid"), "audio/midi") unless score.export_midi_file.attached?
       else
-        Rails.logger.info("[ImportScoreJob] no notes detected in index -> dropping MIDI")
+        Rails.logger.info("[ImportScoreJob][cid=#{cid}] no notes detected in index -> dropping MIDI")
         score.export_midi_file.purge_later if score.export_midi_file.attached?
       end
 
@@ -139,7 +140,8 @@ class ImportScoreJob < ApplicationJob
   def infer_format_from_filename(name)
     ext = File.extname(name.to_s).downcase
     return "guitarpro" if %w[.gp3 .gp4 .gp5 .gpx .gp].include?(ext)
-    return "musicxml"  if %w[.xml .musicxml .mxl].include?(ext)
+    return "mxl" if ext == ".mxl"
+    return "musicxml"  if %w[.xml .musicxml].include?(ext)
     "unknown"
   end
 
@@ -188,13 +190,13 @@ class ImportScoreJob < ApplicationJob
     end
   end
 
-  def handle_failure(score, e, imported_format, filename, byte_size, parse_duration_s)
-    Rails.logger.error("[ImportScoreJob] FAILED score_id=#{score&.id}: #{e.class}: #{e.message} format=#{imported_format} filename=#{filename} size=#{byte_size} parse_duration=#{parse_duration_s}")
+  def handle_failure(score, e, imported_format, filename, byte_size, parse_duration_s, cid:)
+    Rails.logger.error("[ImportScoreJob][cid=#{cid}] FAILED score_id=#{score&.id}: #{e.class}: #{e.message} format=#{imported_format} filename=#{filename} size=#{byte_size} parse_duration=#{parse_duration_s}")
     if defined?(Sentry) && Sentry.respond_to?(:with_scope)
       begin
         Sentry.with_scope do |scope|
-          scope.set_tags(job: self.class.name, format: imported_format, filename:) if scope.respond_to?(:set_tags)
-          scope.set_extras(score_id: score&.id, byte_size:, parse_duration_s:)     if scope.respond_to?(:set_extras)
+          scope.set_tags(job: self.class.name, format: imported_format, filename: filename, cid: cid) if scope.respond_to?(:set_tags)
+          scope.set_extras(score_id: score&.id, byte_size: byte_size, parse_duration_s: parse_duration_s) if scope.respond_to?(:set_extras)
           Sentry.capture_exception(e)
         end
       rescue NoMethodError

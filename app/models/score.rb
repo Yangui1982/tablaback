@@ -1,30 +1,25 @@
 class Score < ApplicationRecord
   include ScoreDefaults
 
-  # --- Callbacks -------------------------------------------------------------
   before_validation :ensure_doc!
   before_save       :sync_tempo_from_doc
   after_destroy_commit :purge_attachments
 
-  # --- Associations ----------------------------------------------------------
   belongs_to :project
   has_many   :tracks, dependent: :destroy
 
-  # --- Active Storage --------------------------------------------------------
   has_one_attached  :source_file
   has_one_attached  :export_midi_file
-  has_one_attached  :normalized_mxl      # <- canon (MusicXML compressé)
+  has_one_attached  :normalized_mxl
   has_one_attached  :preview_pdf
   has_many_attached :preview_pngs
 
-  # --- Content types / validations ------------------------------------------
-  # MXL (compressé) : souvent sniffé comme application/zip
+
   ALLOWED_MXL = [
     "application/vnd.recordare.musicxml",
     %r{\Aapplication/(zip|x-zip-compressed)\z}
   ].freeze
 
-  # Types XML « clairs »
   ALLOWED_XML = %w[
     application/xml
     text/xml
@@ -32,8 +27,6 @@ class Score < ApplicationRecord
     application/vnd.recordare.musicxml
   ].freeze
 
-  # Types réellement observés pour la **source** (XML, MXL=zippé, GP binaire).
-  # ⚠️ Ne mettre que des strings reconnus par Marcel OU des regex.
   ALLOWED_SOURCE_TYPES = (
     ALLOWED_XML + [
       %r{\Aapplication/(zip|x-zip-compressed)\z},
@@ -48,6 +41,27 @@ class Score < ApplicationRecord
 
   VALID_PDF = %w[application/pdf].freeze
   VALID_PNG = %w[image/png].freeze
+
+  VALID_IMPORTED_FORMATS = %w[musicxml mxl guitarpro].freeze
+
+  # enum "string" (pas d'entier) pour bénéficier des scopes/helpers
+  enum imported_format: {
+    musicxml:  "musicxml",
+    mxl:       "mxl",
+    guitarpro: "guitarpro"
+  }, _prefix: :fmt
+
+  # validation côté modèle
+  validates :imported_format,
+            inclusion: { in: VALID_IMPORTED_FORMATS },
+            allow_nil: true
+
+  # normalise toute assignation (downcase/strip et vide => nil)
+  def imported_format=(val)
+    fmt = val.to_s.downcase.strip
+    fmt = nil unless VALID_IMPORTED_FORMATS.include?(fmt)
+    super(fmt.presence)
+  end
 
   validates :source_file,
             content_type: ALLOWED_SOURCE_TYPES,
@@ -73,7 +87,6 @@ class Score < ApplicationRecord
 
   validate :preview_pngs_types_and_size
 
-  # --- Domain validations ----------------------------------------------------
   enum status: { draft: 0, processing: 1, ready: 2, failed: 3 }, _default: :draft
 
   validates :title, presence: true, length: { maximum: 200 }, uniqueness: { scope: :project_id }
@@ -115,19 +128,72 @@ class Score < ApplicationRecord
     }.max.to_i
   end
 
-  def sync_tracks_from_doc!
-    Array(doc["tracks"]).each_with_index do |t, i|
-      name = t["name"].presence || "Track #{i + 1}"
-      chan = t["channel"].to_i
-      prog = t["program"].to_i
+  def sync_tracks_from_doc!(correlation_id: nil)
+    cid = correlation_id.presence || SecureRandom.hex(6)
+    Rails.logger.info("[Score#sync_tracks_from_doc!][cid=#{cid}] start score_id=#{id}")
 
-      tr = tracks.where(name: name).first_or_initialize
-      safe_chan = (1..16).cover?(chan) ? chan : nil
-      tr.midi_channel = safe_chan if tr.respond_to?(:midi_channel=)
-      tr.midi_program = prog       if tr.respond_to?(:midi_program=)
-      tr.instrument   ||= "Imported"
-      tr.save! if tr.changed?
+    ActiveRecord::Base.transaction do
+      tracks_data = doc.fetch("tracks") { [] }
+      raise KeyError, "doc.tracks missing or empty" if tracks_data.blank?
+
+      # index existants par name pour maj/idempotence
+      existing_by_name = tracks.index_by(&:name)
+      seen_names = Set.new
+
+      tracks_data.each_with_index do |t, idx|
+        name = t["name"].to_s.strip
+        name = "Track #{idx + 1}" if name.blank? # garde-fou
+
+        attrs = {
+          instrument:   t["instrument"],
+          tuning:       t["tuning"],
+          capo:         t["capo"],
+          midi_channel: t["midi_channel"]
+        }.compact
+
+        if (trk = existing_by_name[name])
+          trk.update!(attrs)
+        else
+          tracks.create!(attrs.merge(name: name))
+        end
+
+        seen_names << name
+      end
+
+      # supprime celles retirées du doc
+      to_delete = existing_by_name.keys - seen_names.to_a
+      tracks.where(name: to_delete).delete_all if to_delete.any?
     end
+
+    Rails.logger.info("[Score#sync_tracks_from_doc!][cid=#{cid}] done score_id=#{id}")
+    true
+
+  rescue ActiveRecord::RecordInvalid => e
+    Rails.logger.error(
+      "[Score#sync_tracks_from_doc!][cid=#{cid}] record_invalid score_id=#{id} " \
+      "model=#{e.record.class} errors=#{e.record.errors.full_messages.join(', ')}"
+    )
+    Sentry.add_breadcrumb(category: "tracks_sync", message: "RecordInvalid",
+                          data: { score_id: id, cid: cid }) if defined?(Sentry)
+    raise
+
+  rescue KeyError, JSON::ParserError, TypeError => e
+    Rails.logger.error(
+      "[Score#sync_tracks_from_doc!][cid=#{cid}] doc_error score_id=#{id} " \
+      "#{e.class}: #{e.message}"
+    )
+    Sentry.add_breadcrumb(category: "tracks_sync", message: "DocError",
+                          data: { score_id: id, cid: cid, error_class: e.class.name }) if defined?(Sentry)
+    raise
+
+  rescue StandardError => e
+    Rails.logger.error(
+      "[Score#sync_tracks_from_doc!][cid=#{cid}] unexpected_error score_id=#{id} " \
+      "#{e.class}: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}"
+    )
+    Sentry.add_breadcrumb(category: "tracks_sync", message: "UnexpectedError",
+                          data: { score_id: id, cid: cid, error_class: e.class.name }) if defined?(Sentry)
+    raise
   end
 
   # --- Public URLs helpers ---------------------------------------------------

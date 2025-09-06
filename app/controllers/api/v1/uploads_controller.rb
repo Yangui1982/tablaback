@@ -6,7 +6,6 @@ class Api::V1::UploadsController < ApplicationController
 
   def create
     file = params.require(:file)
-    # return render_error('file_missing', "fichier manquant" ), status: :bad_request unless file.present?
 
     project = resolve_project!
     return if performed?
@@ -30,7 +29,8 @@ class Api::V1::UploadsController < ApplicationController
       doc: score.doc.presence || default_doc(score.title)
     )
 
-    ImportScoreJob.perform_later(score.id)
+    # --- Correlation ID propagé au job ---
+    ImportScoreJob.perform_later(score.id, correlation_id: SecureRandom.hex(6))
 
     render json: {
       ok: true,
@@ -71,7 +71,8 @@ class Api::V1::UploadsController < ApplicationController
     end
     ext = File.extname(name).downcase
     return 'guitarpro' if %w[.gp3 .gp4 .gp5 .gpx .gp].include?(ext)
-    return 'musicxml'  if %w[.xml .musicxml .mxl].include?(ext)
+    return 'mxl' if ext == '.mxl'
+    return 'musicxml'  if %w[.xml .musicxml].include?(ext)
     'unknown'
   end
 end
