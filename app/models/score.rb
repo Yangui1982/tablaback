@@ -132,8 +132,8 @@ class Score < ApplicationRecord
 
   # Nettoyage storage après destruction
   def purge_attachments
-    source_file.purge_later        if source_file.attached?
-    export_midi_file.purge_later   if export_midi_file.attached?
+    source_file.purge_later if source_file.attached?
+    export_midi_file.purge_later if export_midi_file.attached?
     export_musicxml_file.purge_later if export_musicxml_file.attached?
   end
 end
