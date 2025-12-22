@@ -1,4 +1,3 @@
-require "timeout"
 require "zip"
 require "nokogiri"
 require "fileutils"
@@ -17,43 +16,33 @@ class ImportScoreJob < ApplicationJob
     parse_duration_s = nil
 
     Rails.logger.info("[ImportScoreJob][cid=#{cid}] start score_id=#{score_id}")
-
     score = Score.find(score_id)
 
-    # ---- Idempotence / Concurrence
-    should_skip = false
+    # ---- Contrôle de l'état et collecte des métadonnées SOUS VERROU
     ActiveRecord::Base.transaction do
       score.lock!
 
-      if score.status.to_s.in?(%w[ready processing])
-        should_skip = true
-      else
-        raise "source_file_missing" unless score.source_file.attached?
+      raise "source_file_missing" unless score.source_file.attached?
 
-        filename  = score.source_file.blob&.filename&.to_s
-        byte_size = score.source_file.blob&.byte_size
-        imported_format = score.imported_format.presence || infer_format_from_filename(filename)
-        raise "unsupported_format" if imported_format.blank? || imported_format == "unknown"
+      # (Re)détermine le format d'import à partir du nom de fichier si besoin
+      filename        = score.source_file.blob&.filename&.to_s
+      byte_size       = score.source_file.blob&.byte_size
+      imported_format = score.imported_format.presence || infer_format_from_filename(filename)
+      raise "unsupported_format" if imported_format.blank? || imported_format == "unknown"
 
-        score.update!(status: :processing, import_error: nil)
-      end
-    end
-    if should_skip
-      Rails.logger.info("[ImportScoreJob][cid=#{cid}] skip score_id=#{score_id} status=#{score.status}")
-      return
+      # Le job possède l'état d'exécution : on s'assure d'être en processing
+      score.update!(status: :processing, import_error: nil, imported_format: imported_format)
     end
 
     Rails.logger.info("[ImportScoreJob][cid=#{cid}] meta score_id=#{score_id} format=#{imported_format} filename=#{filename} size=#{byte_size}")
 
-    # ---- Canonisation & assets (sous timeout)
+    # ---- Canonisation & assets AVEC timeouts PAR ÉTAPE
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    Timeout.timeout(parse_timeout_seconds) do
-      canonize_and_generate_assets!(score, imported_format, cid: cid)
-    end
+    canonize_and_generate_assets!(score, imported_format, cid: cid, total_timeout: parse_timeout_seconds)
     parse_duration_s = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0).round(3)
 
     # ---- OK → ready
-    score.update!(status: :ready)
+    score.update!(status: :ready, import_error: nil)
     Rails.logger.info("[ImportScoreJob][cid=#{cid}] done score_id=#{score_id} -> ready parse_duration=#{parse_duration_s}s")
 
   rescue => e
@@ -64,7 +53,18 @@ class ImportScoreJob < ApplicationJob
   private
 
   # ========= Étape principale : canoniser + générer assets + indexer =========
-  def canonize_and_generate_assets!(score, imported_format, cid:)
+  def canonize_and_generate_assets!(score, imported_format, cid:, total_timeout:)
+    # Répartition du budget (planchers inclus)
+    # Exemple avec total_timeout=120:
+    #   musicxml ≈ 72s, midi ≈ 18s, pdf ≈ 18s, pngs ≈ 12s
+    budgets = {
+      musicxml: [ (total_timeout * 0.60).to_i, 30 ].max,
+      midi:     [ (total_timeout * 0.15).to_i, 15 ].max,
+      pdf:      [ (total_timeout * 0.15).to_i, 15 ].max,
+      pngs:     [ (total_timeout * 0.10).to_i, 10 ].max
+    }
+    Rails.logger.info("[ImportScoreJob][cid=#{cid}] step_timeouts=#{budgets.inspect}")
+
     Dir.mktmpdir("score_#{score.id}_") do |dir|
       cli = MusescoreCli.new
       score.update!(imported_format: imported_format) if imported_format.present?
@@ -78,17 +78,29 @@ class ImportScoreJob < ApplicationJob
       if src_path =~ /\.mxl\z/i
         FileUtils.cp(src_path, mxl_path)
       else
-        cli.to_musicxml(src_path, mxl_path) # out=.mxl → MusicXML compressé
+        cli.to_musicxml(src_path, mxl_path, timeout_s: budgets[:musicxml]) # MusicXML compressé
       end
 
-      # 3) Générer les assets depuis le .mxl
+      # 3) Générer les assets depuis le .mxl (selon flags)
       mid_path    = File.join(dir, "mix.mid")
       pdf_path    = File.join(dir, "score.pdf")
-      png_pattern = File.join(dir, "page.png") # MuseScore sort page-1.png…
+      png_pattern = File.join(dir, "page.png")
 
-      cli.to_midi(mxl_path, mid_path)
-      cli.to_pdf(mxl_path,  pdf_path)
-      cli.to_pngs(mxl_path, png_pattern)
+      if ActiveModel::Type::Boolean.new.cast(ENV.fetch("GENERATE_MIDI", "true"))
+        cli.to_midi(mxl_path, mid_path, timeout_s: budgets[:midi])
+      end
+
+      if ActiveModel::Type::Boolean.new.cast(ENV.fetch("GENERATE_PDF", "false"))
+        cli.to_pdf(mxl_path,  pdf_path, timeout_s: budgets[:pdf])
+      end
+
+      if ActiveModel::Type::Boolean.new.cast(ENV.fetch("GENERATE_PNGS", "false"))
+        begin
+          cli.to_pngs(mxl_path, png_pattern, timeout_s: budgets[:pngs])
+        rescue MusescoreCli::Error => e
+          Rails.logger.warn("[ImportScoreJob][cid=#{cid}] to_pngs skipped: #{e.class}: #{e.message}")
+        end
+      end
 
       # 4) Attacher le canon .mxl
       attach_one(score.normalized_mxl, mxl_path, safe_name(score, ".mxl"), "application/vnd.recordare.musicxml")
