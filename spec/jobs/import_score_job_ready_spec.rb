@@ -19,9 +19,33 @@ RSpec.describe ImportScoreJob, type: :job do
       Sentry.define_singleton_method(:with_scope) { |&blk| blk.call(sentry_scope) }
     end
 
+    # 🔁 Nouveau stub : on simule la canonisation + génération des assets
     allow_any_instance_of(ImportScoreJob)
-      .to receive(:parse_file)
-      .and_return(doc: { "ok" => true })
+      .to receive(:canonize_and_generate_assets!)
+      .and_wrap_original do |_, sc, imported_format|
+        # on simule un index minimal valide
+        sc.doc = {
+          "format"     => (imported_format.presence || "musicxml"),
+          "tempo_bpm"  => 120,
+          "time_signature" => [4, 4],
+          "tracks" => [
+            {
+              "name" => "Guitar",
+              "channel" => 1,
+              "program" => 25,
+              "notes" => [
+                { "start" => 0, "duration" => 480, "pitch" => 60, "velocity" => 90 }
+              ]
+            }
+          ]
+        }
+        sc.update!(tempo: 120)
+        sc.update!(duration_ticks: sc.compute_duration_ticks)
+        sc.sync_tracks_from_doc!
+        # on simule un MIDI attaché (facultatif pour cette spec)
+        midi_bytes = MidiRenderService.new(doc: sc.doc, title: sc.title).call
+        sc.attach_midi!(midi_bytes, filename: "stub.mid")
+      end
   end
 
   after { clear_enqueued_jobs }
@@ -40,6 +64,9 @@ RSpec.describe ImportScoreJob, type: :job do
     described_class.perform_now(score.id)
     score.reload
     expect(score.status).to eq("ready")
-    expect(score.doc).to include("ok" => true, "format" => "musicxml")
+    expect(score.doc).to include("format" => "musicxml", "tempo_bpm" => 120)
+    # un petit extra utile :
+    expect(score.export_midi_file).to be_attached
+    expect(score.tracks.count).to be >= 1
   end
 end
