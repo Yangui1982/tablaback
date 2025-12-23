@@ -38,7 +38,14 @@ class Api::V1::ScoresController < ApplicationController
 
   def show
     authorize @score
-    render json: @score
+
+    with_doc = ActiveModel::Type::Boolean.new.cast(params[:with_doc])
+    track_index = params[:track_index].presence&.to_i
+
+    render json: @score,
+          serializer: ScoreSerializer,
+          with_doc: with_doc,
+          track_index: track_index
   end
 
   def create

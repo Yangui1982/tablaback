@@ -78,10 +78,14 @@ class MusicxmlIndexer
           end
 
           # Technique tablature (si présent dans MusicXML)
-          string = n.at_xpath("./notations/technical/string")&.text.to_i
-          fret   = n.at_xpath("./notations/technical/fret")&.text.to_i
-          string = nil if string <= 0
-          fret   = nil if fret < 0
+          string_txt = n.at_xpath("./notations/technical/string")&.text
+          fret_txt   = n.at_xpath("./notations/technical/fret")&.text
+
+          string = string_txt.to_i if string_txt.present?
+          fret   = fret_txt.to_i   if fret_txt.present?
+
+          string = nil if string && string <= 0
+          fret   = nil if fret && fret < 0
 
           # On stocke uniquement les notes (pas les rests)
           if pitch
