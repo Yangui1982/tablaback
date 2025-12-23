@@ -10,7 +10,7 @@ class Api::V1::UploadsController < ApplicationController
     project = resolve_project!
     return if performed?
 
-    score   = resolve_score!(project)
+    score   = resolve_score!(project, file: file)
     return if performed?
 
     imported_format = infer_format(file)
@@ -54,11 +54,23 @@ class Api::V1::UploadsController < ApplicationController
     end
   end
 
-  def resolve_score!(project)
+  def resolve_score!(project, file: nil)
     if params[:score_id].present?
       project.scores.find(params[:score_id])
     else
-      title = params[:score_title].presence || 'Untitled'
+      raw_title =
+        params[:score_title].presence ||
+        begin
+          if file && file.respond_to?(:original_filename)
+            File.basename(file.original_filename.to_s, ".*")
+                .tr("_", " ")
+                .gsub(/\s+/, " ")
+                .strip
+          end
+        end ||
+        "Untitled"
+
+      title = raw_title[0, 120]
       project.scores.create!(title: title, doc: default_doc(title))
     end
   end

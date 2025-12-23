@@ -1,3 +1,4 @@
+# app/jobs/import_score_job.rb
 require "zip"
 require "nokogiri"
 require "fileutils"
@@ -21,7 +22,6 @@ class ImportScoreJob < ApplicationJob
     # ---- Contrôle de l'état et collecte des métadonnées SOUS VERROU
     ActiveRecord::Base.transaction do
       score.lock!
-
       raise "source_file_missing" unless score.source_file.attached?
 
       # (Re)détermine le format d'import à partir du nom de fichier si besoin
@@ -36,7 +36,7 @@ class ImportScoreJob < ApplicationJob
 
     Rails.logger.info("[ImportScoreJob][cid=#{cid}] meta score_id=#{score_id} format=#{imported_format} filename=#{filename} size=#{byte_size}")
 
-    # ---- Canonisation & assets AVEC timeouts PAR ÉTAPE
+    # ---- Canonisation & assets AVEC timeouts PAR ÉTAPE (sans PDF/PNG)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     canonize_and_generate_assets!(score, imported_format, cid: cid, total_timeout: parse_timeout_seconds)
     parse_duration_s = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0).round(3)
@@ -52,16 +52,12 @@ class ImportScoreJob < ApplicationJob
 
   private
 
-  # ========= Étape principale : canoniser + générer assets + indexer =========
+  # ========= Étape principale : canoniser + indexer + (optionnel) MIDI ========
   def canonize_and_generate_assets!(score, imported_format, cid:, total_timeout:)
-    # Répartition du budget (planchers inclus)
-    # Exemple avec total_timeout=120:
-    #   musicxml ≈ 72s, midi ≈ 18s, pdf ≈ 18s, pngs ≈ 12s
+    # Répartition du budget (planchers inclus) — uniquement musicxml et midi
     budgets = {
-      musicxml: [ (total_timeout * 0.60).to_i, 30 ].max,
-      midi:     [ (total_timeout * 0.15).to_i, 15 ].max,
-      pdf:      [ (total_timeout * 0.15).to_i, 15 ].max,
-      pngs:     [ (total_timeout * 0.10).to_i, 10 ].max
+      musicxml: [ (total_timeout * 0.70).to_i, 30 ].max,
+      midi:     [ (total_timeout * 0.30).to_i, 15 ].max
     }
     Rails.logger.info("[ImportScoreJob][cid=#{cid}] step_timeouts=#{budgets.inspect}")
 
@@ -73,6 +69,10 @@ class ImportScoreJob < ApplicationJob
       src_path = download_to(score.source_file, File.join(dir, "source"))
       mxl_path = File.join(dir, "normalized.mxl")        # <-- canon (.mxl)
       xml_path = File.join(dir, "normalized.musicxml")   # <-- temp pour index
+      mid_path = File.join(dir, "mix.mid")
+
+      # Conserver le nom de fichier original pour fallback de titre
+      original_filename = score.source_file&.blob&.filename&.to_s
 
       # 2) Produire le canon .mxl
       if src_path =~ /\.mxl\z/i
@@ -81,37 +81,32 @@ class ImportScoreJob < ApplicationJob
         cli.to_musicxml(src_path, mxl_path, timeout_s: budgets[:musicxml]) # MusicXML compressé
       end
 
-      # 3) Générer les assets depuis le .mxl (selon flags)
-      mid_path    = File.join(dir, "mix.mid")
-      pdf_path    = File.join(dir, "score.pdf")
-      png_pattern = File.join(dir, "page.png")
-
-      if ActiveModel::Type::Boolean.new.cast(ENV.fetch("GENERATE_MIDI", "true"))
-        cli.to_midi(mxl_path, mid_path, timeout_s: budgets[:midi])
-      end
-
-      if ActiveModel::Type::Boolean.new.cast(ENV.fetch("GENERATE_PDF", "false"))
-        cli.to_pdf(mxl_path,  pdf_path, timeout_s: budgets[:pdf])
-      end
-
-      if ActiveModel::Type::Boolean.new.cast(ENV.fetch("GENERATE_PNGS", "false"))
-        begin
-          cli.to_pngs(mxl_path, png_pattern, timeout_s: budgets[:pngs])
-        rescue MusescoreCli::Error => e
-          Rails.logger.warn("[ImportScoreJob][cid=#{cid}] to_pngs skipped: #{e.class}: #{e.message}")
-        end
-      end
-
-      # 4) Attacher le canon .mxl
-      attach_one(score.normalized_mxl, mxl_path, safe_name(score, ".mxl"), "application/vnd.recordare.musicxml")
-
-      # 5) Indexer : extraire un .musicxml temporaire → MusicxmlIndexer
+      # 3) Indexer : extraire un .musicxml temporaire → MusicxmlIndexer
       extract_mxl_to_xml(mxl_path, xml_path)
-      index = MusicxmlIndexer.index_file(xml_path) # => Hash
+      index = MusicxmlIndexer.index_file(xml_path) # => Hash (structure musicale)
       score.doc = index
       score.update!(tempo: index["tempo_bpm"].to_i) if index["tempo_bpm"].present?
 
-      # 6) Métriques & sync
+      # --- Détermination/normalisation du titre ---
+      title_from_index = index["title"].to_s.strip
+      # fallback depuis le nom de fichier: "My_song.gp4" -> "My song"
+      title_from_filename =
+        begin
+          File.basename(original_filename.to_s, ".*")
+              .tr("_", " ")
+              .gsub(/\s+/, " ")
+              .strip
+        rescue
+          nil
+        end
+
+      if score.title.blank? || score.title =~ /\AUntitled/i
+        new_title = title_from_index.presence || title_from_filename
+        score.title = new_title if new_title.present?
+      end
+      # --------------------------------------------
+
+      # 4) Métriques & sync
       score.update!(duration_ticks: score.compute_duration_ticks)
       begin
         score.sync_tracks_from_doc!(correlation_id: cid)
@@ -119,22 +114,21 @@ class ImportScoreJob < ApplicationJob
         Rails.logger.warn("[ImportScoreJob][cid=#{cid}] sync_tracks_from_doc! failed: #{e.class}: #{e.message}")
       end
 
-      # 7) MIDI : purge si pas de notes, sinon attacher si absent
-      if any_note_in_index?(index)
-        attach_one(score.export_midi_file, mid_path, safe_name(score, ".mid"), "audio/midi") unless score.export_midi_file.attached?
-      else
-        Rails.logger.info("[ImportScoreJob][cid=#{cid}] no notes detected in index -> dropping MIDI")
-        score.export_midi_file.purge_later if score.export_midi_file.attached?
-      end
+      # 5) Attacher le canon .mxl
+      attach_one(score.normalized_mxl, mxl_path, safe_name(score, ".mxl"), "application/vnd.recordare.musicxml")
 
-      # 8) Previews (PDF + PNGs)
-      attach_one(score.preview_pdf, pdf_path, safe_name(score, ".pdf"), "application/pdf")
-      Dir[File.join(dir, "page*.png")].sort.each_with_index do |png, i|
-        score.preview_pngs.attach(
-          io: File.open(png, "rb"),
-          filename: "#{score.title.to_s.parameterize}-p#{i + 1}.png",
-          content_type: "image/png"
-        )
+      # 6) MIDI : si des notes existent, tenter la génération, sinon purger
+      if any_note_in_index?(index)
+        begin
+          cli.to_midi(mxl_path, mid_path, timeout_s: budgets[:midi])
+          attach_one(score.export_midi_file, mid_path, safe_name(score, ".mid"), "audio/midi")
+        rescue MusescoreCli::Error => e
+          Rails.logger.warn("[ImportScoreJob][cid=#{cid}] to_midi skipped: #{e.class}: #{e.message}")
+          score.export_midi_file.purge_later if score.export_midi_file.attached?
+        end
+      else
+        Rails.logger.info("[ImportScoreJob][cid=#{cid}] no notes detected in index -> no MIDI")
+        score.export_midi_file.purge_later if score.export_midi_file.attached?
       end
 
       score.save!
@@ -170,9 +164,8 @@ class ImportScoreJob < ApplicationJob
   end
 
   def attach_one(att_obj, path, filename, content_type)
-    File.open(path, "rb") do |f|
-      att_obj.attach(io: f, filename:, content_type:)
-    end
+    return unless File.exist?(path)
+    File.open(path, "rb") { |f| att_obj.attach(io: f, filename:, content_type:) }
   end
 
   def safe_name(score, ext)
